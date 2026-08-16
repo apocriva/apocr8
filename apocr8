@@ -1,4 +1,4 @@
-desc:Super8 MIDI-controlled synchronized looper (Cockos)
+desc:apocr8 MIDI-controlled synchronized looper (Cockos) (apocriva version)
 
 // Copyright (C) 2015 and onward Cockos Inc
 // LICENSE: LGPL v2 or later - http://www.gnu.org/licenses/lgpl.html
@@ -67,6 +67,7 @@ options: maxmem=<? printf("%d",maxmem*1024*128); ?> no_meter gfx_idle prealloc=*
 
 slider1:g_slider_sync=0<0,2,1{off,project,playback}>-Sync
 slider4:g_slider_click_cnt=0<0,64,1>-Click count/length
+slider5:g_slider_chan_selected=0<-1,7,1>-Selected channel
 
 @init
 
@@ -225,8 +226,8 @@ function get_linked_rec(idx) (
 );
 
 function is_chan_selected(idx) (
-  g_chan_selected == idx ||
-    ((cfgp_link[]&(1<<(idx>>1))) && g_chan_selected == idx~1);
+  g_slider_chan_selected == idx ||
+    ((cfgp_link[]&(1<<(idx>>1))) && g_slider_chan_selected == idx~1);
 );
 
 function setstate_for_rec(rec, state) (
@@ -372,14 +373,14 @@ function onmsg(m1,m2,m3) instance(rec,note,note2,note3,note4)
    ) : m2 == note2  || m2 == 1024+rec+st_note2 ? (
      newstate = rec[st_state] == 2 || (rec[st_state]==0 && g_length) ? 1 : 0
    ) : m2 == note3 ? (
-     g_chan_selected = (g_chan_selected == this.idx) ? -1 : this.idx;
+     g_slider_chan_selected = (g_slider_chan_selected == this.idx) ? -1 : this.idx;
    ) : m2 == note4 || m2 == 1024+rec+st_note4 ? (
      this.reverse();
    );
    newstate >= 0 ? (
      this.setstate(newstate);
      setstate_for_rec(get_linked_rec(this.idx), newstate);
-     g_chan_selected = this.idx;
+     g_slider_chan_selected = this.idx;
    );
 );
 
@@ -457,7 +458,7 @@ function updatechfromrec()
 
 function reset() local(lp)
 (
-  g_chan_selected=-1;
+  g_slider_chan_selected=-1;
   // setstate() will latch dirty_top to st_dirty
   <? loop(x=0;nch, x+=1; printf("ch%d.setstate(0); ch%d.rev_stop(); ch%d.dirty_top=-1;\n",x,x,x)) ?>
   lp = mem_stlist;
@@ -515,6 +516,7 @@ ext_noinit == 0 ? (
   cfgp_playall =   mem_gen_cfg + 14;
   cfgp_playsel =   mem_gen_cfg + 15;
   (cfgp_link =     mem_gen_cfg + 16)[]=0;
+  cfgp_chan_selected = mem_gen_cfg + 17;
 
   mem_gen_names = alloc(mem_gen_sz);
   memset(mem_gen_names,"",mem_gen_sz);
@@ -523,7 +525,7 @@ ext_noinit == 0 ? (
   mem_gen_names[2] = "double";
   mem_gen_names[3] = "double\nno rep";
   mem_gen_names[4] = "init\nrec\ngate";
-  mem_gen_names[7] = "add to\nproject";
+  mem_gen_names[7] = "play\nselected";
   mem_gen_names[11] = "x-fade\nshortened\nloop";
   mem_gen_names[14] = "play all";
   mem_gen_names[15] = "rec/play\nselected";
@@ -551,7 +553,7 @@ ext_noinit == 0 ? (
   g_firstrec=0;
   g_recstart_gate=0;
   g_prevent_processing = 0; // &1=gate, &2=sync mode
-  g_chan_selected = -1; // currently selected channel
+  g_slider_chan_selected = -1; // currently selected channel
   g_lastmsg = -1;
 
   <? loop(x=0;a=36; nch,
@@ -570,6 +572,10 @@ cfgp_sync[] != floor(g_slider_sync+0.5) ? (
 
 (cfgp_clickcnt[]|0) != (g_slider_click_cnt|0) ? (
   cfgp_clickcnt[] = g_slider_click_cnt|0;
+);
+
+cfgp_chan_selected != (g_slider_chan_selected|0) ? (
+  cfgp_chan_selected = g_slider_chan_selected|0;
 );
 
 recalc_fades();
@@ -705,9 +711,9 @@ i_srate = 1.0/srate;
 function chan_onmsg(m1,m2,m3)
 (
   g_was_firstrec = g_firstrec; // latch to this value for any messages that apply to multiple channels
-  (m2 == cfgp_playsel[] || m2 == 1024+cfgp_playsel) && g_chan_selected>=0 ? (
-    m2 = 1024 + mem_stlist + g_chan_selected*st_num + st_note1 +
-      (mem_stlist[g_chan_selected*st_num + st_state]?1:0);
+  (m2 == cfgp_playsel[] || m2 == 1024+cfgp_playsel) && g_slider_chan_selected>=0 ? (
+    m2 = 1024 + mem_stlist + g_slider_chan_selected*st_num + st_note1 +
+      (mem_stlist[g_slider_chan_selected*st_num + st_state]?1:0);
   );
 
   m2 == cfgp_playall[] || m2 == 1024+cfgp_playall ? play_or_stop_all();
@@ -789,8 +795,8 @@ while (sidx == nextmsg_offs)
 );
 
 sidx+=1;
-g_chan_selected >= 0 ? (
-  g_chan_peak = abs(spl(g_chan_selected));
+g_slider_chan_selected >= 0 ? (
+  g_chan_peak = abs(spl(g_slider_chan_selected));
   g_peakvol = max(g_chan_peak,g_peakvol);
 
   g_prevent_processing==1 && g_firstrec ? (
@@ -821,7 +827,7 @@ g_prevent_processing===0 ? (
   );
 );
 
-<? printf("spl%d",nch) ?> = g_chan_selected >= 0 ? spl(g_chan_selected);
+<? printf("spl%d",nch) ?> = g_slider_chan_selected >= 0 ? spl(g_slider_chan_selected);
 
 @gfx 420 480
 
@@ -1149,6 +1155,7 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
   rowsize = col <= .115 ? 16 : col <= .5 ? 8 : col <= 2 ? 4 : col <= 8 ? 2 : 1;
   w=(gfx_w - 2 - gap*(rowsize-1))/rowsize;
   (nrows = (8+g_nchan)/rowsize) != 2 ? w=min(w, ((gfx_h - ypos - 8 - gap*(nrows-1))/nrows));
+  (nrows != 2) ? ypos += h + gap;
 
   h=(w|=0);
   mw = (w*.2)|0;
@@ -1175,7 +1182,7 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
           mouse_in(xpos, my+mw+1, 12, 10)) ? (
         cfgp_link[] ~= 1<<(i>>1);
       ) : mouse_in(xpos, ypos, w, h) ? (
-        g_chan_selected=i;
+        g_slider_chan_selected=i;
       );
     );
 
@@ -1290,10 +1297,11 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
     xpos += w + gap;
     (col+=1)>=rowsize ? (
       xpos = ixpos;
-      ypos += h + gap;
+      ypos -= h + gap;
       col=0;
     );
   );
+  (nrows == 2) ? (ypos += 2 * (h + gap)) : (ypos += 3 * (h + gap));
 
 
   t=0;
@@ -1461,7 +1469,7 @@ function draw_topbar(need_ref) local(s,i,t, lastlen, lastgate, lastlatch, lastcl
   gfx_x=0;
   gfx_y=4;
   t=time_precise();
-  s="Super<?printf("%d",nch)?>";
+  s="apocr<?printf("%d",nch)?>";
   i=0;
   loop(strlen(s),
     gfx_set(sin(t+i*0.2)*0.3+0.5, cos(t*.61+i*0.5)*.7+0.3, sin(t*2.1-i*0.6)*.3+0.7);
@@ -1609,7 +1617,7 @@ function draw_trim_waveform(xpos, ypos, w, h, chan, isend)
 
   cap_mode == cfgp_offs || cap_mode == cfgp_length ? (
     g_edgetrim_drawstate>=0 ? (
-      draw_trim_waveform(0,40,gfx_w,gfx_h-40, max(g_chan_selected,0), cap_mode == cfgp_length);
+      draw_trim_waveform(0,40,gfx_w,gfx_h-40, max(g_slider_chan_selected,0), cap_mode == cfgp_length);
       g_edgetrim_drawstate=1;
     );
   ) : (
