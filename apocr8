@@ -495,7 +495,7 @@ ext_noinit == 0 ? (
   g_latchq = alloc(g_latchq_len*3);
   g_latchq_used=0;
 
-  mem_gen_sz=17;
+  mem_gen_sz=19;
   mem_gen_cfg = alloc(mem_gen_sz);
   memset(mem_gen_cfg,128,mem_gen_sz);
 
@@ -514,9 +514,10 @@ ext_noinit == 0 ? (
   (cfgp_offs =     mem_gen_cfg + 12)[]=0;
   (cfgp_sync =     mem_gen_cfg + 13)[]=0;
   cfgp_playall =   mem_gen_cfg + 14;
-  cfgp_playsel =   mem_gen_cfg + 15;
+  cfgp_recsel =    mem_gen_cfg + 15;
   (cfgp_link =     mem_gen_cfg + 16)[]=0;
   cfgp_chan_selected = mem_gen_cfg + 17;
+  cfgp_playsel =   mem_gen_cfg + 18;
 
   mem_gen_names = alloc(mem_gen_sz);
   memset(mem_gen_names,"",mem_gen_sz);
@@ -525,10 +526,11 @@ ext_noinit == 0 ? (
   mem_gen_names[2] = "double";
   mem_gen_names[3] = "double\nno rep";
   mem_gen_names[4] = "init\nrec\ngate";
-  mem_gen_names[7] = "play\nselected";
+  mem_gen_names[7] = "export to\nproject";
   mem_gen_names[11] = "x-fade\nshortened\nloop";
   mem_gen_names[14] = "play all";
-  mem_gen_names[15] = "rec/play\nselected";
+  mem_gen_names[15] = "rec\nselected";
+  mem_gen_names[18] = "play\nselected";
 
   mem_gen_order = alloc(9);
   mem_gen_order[0]=1;
@@ -537,7 +539,7 @@ ext_noinit == 0 ? (
   mem_gen_order[3]=11;
   mem_gen_order[4]=14;
   mem_gen_order[5]=15;
-  mem_gen_order[6]=7;
+  mem_gen_order[6]=18;
   mem_gen_order[7]=0;
   mem_gen_order[8]=-1; // end marker
 
@@ -711,9 +713,13 @@ i_srate = 1.0/srate;
 function chan_onmsg(m1,m2,m3)
 (
   g_was_firstrec = g_firstrec; // latch to this value for any messages that apply to multiple channels
+  (m2 == cfgp_recsel[] || m2 == 1024+cfgp_recsel) && g_slider_chan_selected>=0 ? (
+    m2 = 1024 + mem_stlist + g_slider_chan_selected*st_num + st_note1;
+    //  + (mem_stlist[g_slider_chan_selected*st_num + st_state]?1:0);
+  );
   (m2 == cfgp_playsel[] || m2 == 1024+cfgp_playsel) && g_slider_chan_selected>=0 ? (
-    m2 = 1024 + mem_stlist + g_slider_chan_selected*st_num + st_note1 +
-      (mem_stlist[g_slider_chan_selected*st_num + st_state]?1:0);
+    m2 = 1024 + mem_stlist + g_slider_chan_selected*st_num + st_note2;
+    //  + (mem_stlist[g_slider_chan_selected*st_num + st_state]?1:0);
   );
 
   m2 == cfgp_playall[] || m2 == 1024+cfgp_playall ? play_or_stop_all();
@@ -785,7 +791,7 @@ while (sidx == nextmsg_offs)
     nextmsg_2 == cfgp_halve[]        ? (strlen(#mainthread_todo)<100 ? strcat(#mainthread_todo, "h")) :
     nextmsg_2 == cfgp_double[]       ? (strlen(#mainthread_todo)<100 ? strcat(#mainthread_todo, "d")) :
     nextmsg_2 == cfgp_double_norep[] ? (strlen(#mainthread_todo)<100 ? strcat(#mainthread_todo, "D")) :
-    nextmsg_2 == cfgp_export[]       ? (strlen(#mainthread_todo)<100 ? strcat(#mainthread_todo, "e")) :
+    // nextmsg_2 == cfgp_export[]       ? (strlen(#mainthread_todo)<100 ? strcat(#mainthread_todo, "e")) :
     nextmsg_2 == cfgp_xfade[]        ? (strlen(#mainthread_todo)<100 ? strcat(#mainthread_todo, "x"));
 
     nextmsg_2 < 1024 ? g_lastmsg = nextmsg_2;
@@ -1155,7 +1161,7 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
   rowsize = col <= .115 ? 16 : col <= .5 ? 8 : col <= 2 ? 4 : col <= 8 ? 2 : 1;
   w=(gfx_w - 2 - gap*(rowsize-1))/rowsize;
   (nrows = (8+g_nchan)/rowsize) != 2 ? w=min(w, ((gfx_h - ypos - 8 - gap*(nrows-1))/nrows));
-  (nrows != 2) ? ypos += h + gap;
+  nrows > 2 ? ypos += h + gap;
 
   h=(w|=0);
   mw = (w*.2)|0;
@@ -1315,6 +1321,7 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
       i == 11 ? gfx_set(0.0, 0.5, 0.5) :
       i == 14 ? gfx_set(0.0, 0.7, 0.0) :
       i == 15 ? gfx_set(0.9, 0.7, 0.0) :
+      i == 18 ? gfx_set(0.2, 0.7, 0.0) :
                 gfx_set(0.5, 0.0, 0.0);
 
       draw_button(xpos,ypos,w,h,0);
@@ -1337,9 +1344,9 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
       i == cfgp_halve        ? strcat(#mainthread_todo, "h") :
       i == cfgp_double       ? strcat(#mainthread_todo, "d") :
       i == cfgp_double_norep ? strcat(#mainthread_todo, "D") :
-      i == cfgp_export       ? strcat(#mainthread_todo, "e") :
+    //   i == cfgp_export       ? strcat(#mainthread_todo, "e") :
       i == cfgp_xfade        ? strcat(#mainthread_todo, "x") :
-      i == cfgp_playall || i == cfgp_playsel ? g_inject_midinote = 1024 + i; // inject to support latch mode
+      i == cfgp_playall || i == cfgp_recsel || i == cfgp_playsel ? g_inject_midinote = 1024 + i; // inject to support latch mode
     );
 
     t+=1;
