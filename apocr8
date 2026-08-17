@@ -67,7 +67,7 @@ options: maxmem=<? printf("%d",maxmem*1024*128); ?> no_meter gfx_idle prealloc=*
 
 slider1:g_slider_sync=0<0,2,1{off,project,playback}>-Sync
 slider4:g_slider_click_cnt=0<0,64,1>-Click count/length
-slider5:g_slider_chan_selected=0<-1,7,1>-Selected channel
+slider5:g_slider_chan_selected=0<0,3,1>-Selected channel
 
 @init
 
@@ -246,6 +246,15 @@ function play_or_stop_all() local(want_state rec)
   loop(g_nchan,
     rec -= st_num;
     rec[st_state] != want_state && (rec[st_dirty]>0||rec[st_state]) ? setstate_for_rec(rec,want_state);
+  );
+);
+
+function stop_all() local(rec)
+(
+  rec = mem_stlist;
+  loop(g_nchan,
+    rec[st_state] != 0 ? setstate_for_rec(rec,0);
+    rec += st_num;
   );
 );
 
@@ -495,7 +504,7 @@ ext_noinit == 0 ? (
   g_latchq = alloc(g_latchq_len*3);
   g_latchq_used=0;
 
-  mem_gen_sz=19;
+  mem_gen_sz=20;
   mem_gen_cfg = alloc(mem_gen_sz);
   memset(mem_gen_cfg,128,mem_gen_sz);
 
@@ -518,6 +527,7 @@ ext_noinit == 0 ? (
   (cfgp_link =     mem_gen_cfg + 16)[]=0;
   cfgp_chan_selected = mem_gen_cfg + 17;
   cfgp_playsel =   mem_gen_cfg + 18;
+  cfgp_stopall =   mem_gen_cfg + 19;
 
   mem_gen_names = alloc(mem_gen_sz);
   memset(mem_gen_names,"",mem_gen_sz);
@@ -531,12 +541,13 @@ ext_noinit == 0 ? (
   mem_gen_names[14] = "play all";
   mem_gen_names[15] = "rec\nselected";
   mem_gen_names[18] = "play\nselected";
+  mem_gen_names[19] = "stop all";
 
   mem_gen_order = alloc(9);
   mem_gen_order[0]=1;
   mem_gen_order[1]=2;
   mem_gen_order[2]=3;
-  mem_gen_order[3]=11;
+  mem_gen_order[3]=19;
   mem_gen_order[4]=14;
   mem_gen_order[5]=15;
   mem_gen_order[6]=18;
@@ -723,6 +734,7 @@ function chan_onmsg(m1,m2,m3)
   );
 
   m2 == cfgp_playall[] || m2 == 1024+cfgp_playall ? play_or_stop_all();
+  m2 == cfgp_stopall[] || m2 == 1024+cfgp_stopall ? stop_all();
   <? loop(x=0;nch, printf("ch%d.onmsg(m1,m2,m3);\n",x+=1)) ?>
 );
 
@@ -1161,7 +1173,7 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
   rowsize = col <= .115 ? 16 : col <= .5 ? 8 : col <= 2 ? 4 : col <= 8 ? 2 : 1;
   w=(gfx_w - 2 - gap*(rowsize-1))/rowsize;
   (nrows = (8+g_nchan)/rowsize) != 2 ? w=min(w, ((gfx_h - ypos - 8 - gap*(nrows-1))/nrows));
-  nrows > 2 ? ypos += h + gap;
+  // nrows > 2 ? ypos += h + gap;
 
   h=(w|=0);
   mw = (w*.2)|0;
@@ -1303,12 +1315,12 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
     xpos += w + gap;
     (col+=1)>=rowsize ? (
       xpos = ixpos;
-      ypos -= h + gap;
+      ypos += h + gap;
+      // ypos -= h + gap;
       col=0;
     );
   );
-  (nrows == 2) ? (ypos += 2 * (h + gap)) : (ypos += 3 * (h + gap));
-
+  // (nrows == 2) ? (ypos += 2 * (h + gap)) : (ypos += 3 * (h + gap));
 
   t=0;
   ypos < gfx_h - 24 ? while ((i=mem_gen_order[t])>=0)
@@ -1322,6 +1334,7 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
       i == 14 ? gfx_set(0.0, 0.7, 0.0) :
       i == 15 ? gfx_set(0.9, 0.7, 0.0) :
       i == 18 ? gfx_set(0.2, 0.7, 0.0) :
+      i == 19 ? gfx_set(0.9, 0.5, 0.0) :
                 gfx_set(0.5, 0.0, 0.0);
 
       draw_button(xpos,ypos,w,h,0);
@@ -1346,7 +1359,7 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
       i == cfgp_double_norep ? strcat(#mainthread_todo, "D") :
     //   i == cfgp_export       ? strcat(#mainthread_todo, "e") :
       i == cfgp_xfade        ? strcat(#mainthread_todo, "x") :
-      i == cfgp_playall || i == cfgp_recsel || i == cfgp_playsel ? g_inject_midinote = 1024 + i; // inject to support latch mode
+      i == cfgp_playall || i == cfgp_recsel || i == cfgp_playsel || i == cfgp_stopall ? g_inject_midinote = 1024 + i; // inject to support latch mode
     );
 
     t+=1;
