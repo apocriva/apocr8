@@ -68,6 +68,7 @@ options: maxmem=<? printf("%d",maxmem*1024*128); ?> no_meter gfx_idle prealloc=*
 slider1:g_slider_sync=0<0,2,1{off,project,playback}>-Sync
 slider4:g_slider_click_cnt=0<0,64,1>-Click count/length
 slider5:g_slider_chan_selected=0<0,3,1>-Selected channel
+slider6:g_slider_overdub_vol=1<0,1>-Overdub volume
 
 @init
 
@@ -334,6 +335,7 @@ function process(s)
     // no monitoring
     fpos > 0.0001 ? (
       this.dirty_top = max(this.dirty_top,wrpos + l_offs);
+      // buf[wrpos] = r + s*fpos;
       buf[wrpos] += s*fpos;
     );
     r;
@@ -347,10 +349,14 @@ function process(s)
     fpos > 0.0001 ? (
       this.dirty_top = max(this.dirty_top,wrpos + l_offs);
       wrpos == l_pos ? (
-        buf[l_pos] += s*fpos;
+        // buf[l_pos] = r * s*fpos;
+        buf[l_pos] = buf[l_pos] * g_slider_overdub_vol + s*fpos;
+        // buf[l_pos] += s*fpos;
         r + s*max(fpos*sc, monvol);
       ) : (
-        buf[wrpos] += s*fpos;
+        // buf[wrpos] = r + s*fpos;
+        buf[wrpos] = buf[wrpos] * g_slider_overdub_vol + s*fpos;
+        // buf[wrpos] += s*fpos;
         r + s * monvol;
       );
     ) : (
@@ -504,7 +510,7 @@ ext_noinit == 0 ? (
   g_latchq = alloc(g_latchq_len*3);
   g_latchq_used=0;
 
-  mem_gen_sz=20;
+  mem_gen_sz=21;
   mem_gen_cfg = alloc(mem_gen_sz);
   memset(mem_gen_cfg,128,mem_gen_sz);
 
@@ -528,6 +534,7 @@ ext_noinit == 0 ? (
   cfgp_chan_selected = mem_gen_cfg + 17;
   cfgp_playsel =   mem_gen_cfg + 18;
   cfgp_stopall =   mem_gen_cfg + 19;
+  (cfgp_overdub_vol = mem_gen_cfg + 20)[]=1;
 
   mem_gen_names = alloc(mem_gen_sz);
   memset(mem_gen_names,"",mem_gen_sz);
@@ -1389,7 +1396,7 @@ function draw_position(ypos) local(last_pos,last_len)
   );
 );
 
-function draw_topbar(need_ref) local(s,i,t, lastlen, lastgate, lastlatch, lastclickcount, lastvclickoffs, lastoffs, lastsync)
+function draw_topbar(need_ref) local(s,i,t, lastlen, lastgate, lastlatch, lastclickcount, lastvclickoffs, lastoffs, lastsync, lastoverdubvol)
 (
   need_ref == 0 ? (
     need_ref = (lastlen != g_length ||
@@ -1398,7 +1405,8 @@ function draw_topbar(need_ref) local(s,i,t, lastlen, lastgate, lastlatch, lastcl
                 lastgate != cfgp_gate[] ||
                 lastlatch != g_latchmode ||
                 lastclickcount != (cfgp_clickcnt[]|0) ||
-                lastvclickoffs != cfgp_vclick[]);
+                lastvclickoffs != cfgp_vclick[] ||
+                lastoverdubvol != g_slider_overdub_vol);
   );
 
   need_ref ? (
@@ -1414,6 +1422,9 @@ function draw_topbar(need_ref) local(s,i,t, lastlen, lastgate, lastlatch, lastcl
     lastoffs = g_offs;
     lastgate = cfgp_gate[];
     lastvclickoffs = cfgp_vclick[];
+    lastoverdubvol = g_slider_overdub_vol;
+
+    overdubvol_button.draw_topbar_button(gfx_x+4,2, sprintf(#,"overdubvol %.0f %%", lastoverdubvol * 100));
 
     lastsync==0 ? (
       offs_button.draw_topbar_button(gfx_x+4,2, sprintf(#,"offs %.0f spls", g_offs));
@@ -1452,7 +1463,8 @@ function draw_topbar(need_ref) local(s,i,t, lastlen, lastgate, lastlatch, lastcl
         ) ||
         clickcnt_button.hit_topbar_button(mouse_x,mouse_y,cfgp_clickcnt)||
         ((lastclickcount||lastsync)&&vclick_button.hit_topbar_button(mouse_x,mouse_y,cfgp_vclick))||
-        fadesz_button.hit_topbar_button(mouse_x,mouse_y,cfgp_fade);
+        fadesz_button.hit_topbar_button(mouse_x,mouse_y,cfgp_fade)||
+        overdubvol_button.hit_topbar_button(mouse_x,mouse_y,cfgp_overdub_vol);
       );
     ) : (cap_mode >= mem_gen_cfg && cap_mode < mem_gen_cfg+mem_gen_sz && (dy = mouse_y - cap_last_y)) ? (
       cap_mode == cfgp_gate ? (
@@ -1480,6 +1492,8 @@ function draw_topbar(need_ref) local(s,i,t, lastlen, lastgate, lastlatch, lastcl
           g_pos = (g_pos + t) % g_length;
           g_edgetrim_drawstate=1;
         );
+      ) : cap_mode == cfgp_overdub_vol ? (
+        g_slider_overdub_vol = (cap_mode[0] = min(max(cap_mode[0]-dy*0.01,0),1));
       );
       cap_last_y=mouse_y;
     );
