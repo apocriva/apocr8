@@ -1,0 +1,52 @@
+desc: Simple indicators
+// author: apocriva
+
+slider1:0<0,1,1{Off, On}>-Status
+
+@init
+
+on.r = 1.0;
+on.g = 0.0;
+on.b = 0.0;
+on.text = "REC";
+
+off.r = 0.0;
+off.g = 1.0;
+off.b = 0.0;
+off.text = "PLAY";
+
+@block
+
+@gfx
+
+slider1 > 0 ? (
+    gfx_set(on.r, on.g, on.b);
+) : (
+    gfx_set(off.r, off.g, off.b);
+);
+gfx_rect(0, 0, gfx_w, gfx_h);
+
+slider1 > 0 ? (
+    text = on.text;
+) : (
+    text = off.text;
+);
+
+gfx_measurestr(text, sw, sh);
+gfx_set(0, 0, 0);
+gfx_x = gfx_w / 2 - sw / 2 + 1;
+gfx_y = gfx_h / 2 - sh / 2;
+gfx_drawstr(text);
+gfx_x = gfx_w / 2 - sw / 2;
+gfx_y = gfx_h / 2 - sh / 2 + 1;
+gfx_drawstr(text);
+gfx_x = gfx_w / 2 - sw / 2 - 1;
+gfx_y = gfx_h / 2 - sh / 2;
+gfx_drawstr(text);
+gfx_x = gfx_w / 2 - sw / 2;
+gfx_y = gfx_h / 2 - sh / 2 - 1;
+gfx_drawstr(text);
+gfx_set(1, 1, 1);
+gfx_x = gfx_w / 2 - sw / 2;
+gfx_y = gfx_h / 2 - sh / 2;
+gfx_drawstr(text);
