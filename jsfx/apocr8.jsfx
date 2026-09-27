@@ -98,7 +98,8 @@ st_peak_in = 10;
 st_rdc = 11; // msec, chX.rdc is samples
 st_div = 12; // subdiv, 1=normal, chX.div is 1/this
 st_fade_size = 13; // fadeout size
-st_num = 14;
+st_latched_state = 14; // see st_state
+st_num = 15;
 
 function recalc_fades() (
   g_fadespeed = exp(-1/(srate * 0.002));  // fade speed for monitoring
@@ -147,6 +148,7 @@ function init(x, n1,n2,n3)
   rec[st_rdc] = 0;
   rec[st_div] = 1;
   rec[st_fade_size] = 0;
+  rec[st_latched_state] = -1;
 
   this.updatefromrec();
 );
@@ -175,6 +177,7 @@ function process_need_zero(p1, p2) global()
 
 function setstate(st) instance(fpos_slope, fpos2_slope, rec) local(dt)
 (
+  rec[st_latched_state] = -1;
   rec[st_state] ? (
     st==0 ? (
       g_active_mask &= -(1<<this.idx + 1);
@@ -379,24 +382,41 @@ function reverse() instance(rec) local(l)
   rec[st_lastd] = -1;
 );
 
+function get_state_from_msg(m1,m2,m3) instance(rec,note,note2,note3,note4)
+(
+  (m2 == note && (m2 != note2 || rec[st_state]==0)) || m2 == 1024+rec+st_note1 ? (
+    (rec[st_state] == 2 && g_was_firstrec==0) ? 1 : 2;
+  ) : m2 == note2  || m2 == 1024+rec+st_note2 ? (
+    rec[st_state] == 2 || (rec[st_state]==0 && g_length) ? 1 : 0
+  ) : -1;
+);
+
 function onmsg(m1,m2,m3) instance(rec,note,note2,note3,note4)
   local(newstate)
 (
-   newstate = -1;
-   (m2 == note && (m2 != note2 || rec[st_state]==0)) || m2 == 1024+rec+st_note1 ? (
-     newstate = (rec[st_state] == 2 && g_was_firstrec==0) ? 1 : 2;
-   ) : m2 == note2  || m2 == 1024+rec+st_note2 ? (
-     newstate = rec[st_state] == 2 || (rec[st_state]==0 && g_length) ? 1 : 0
-   ) : m2 == note3 ? (
-     g_slider_chan_selected = (g_slider_chan_selected == this.idx) ? -1 : this.idx;
-   ) : m2 == note4 || m2 == 1024+rec+st_note4 ? (
-     this.reverse();
-   );
-   newstate >= 0 ? (
-     this.setstate(newstate);
-     setstate_for_rec(get_linked_rec(this.idx), newstate);
-     g_slider_chan_selected = this.idx;
-   );
+  newstate = -1;
+  newstate = this.get_state_from_msg(m1,m2,m3);
+  newstate == -1 ? (
+    m2 == note3 ? (
+      g_slider_chan_selected = (g_slider_chan_selected == this.idx) ? -1 : this.idx;
+    ) : m2 == note4 || m2 == 1024+rec+st_note4 ? (
+      this.reverse();
+    );
+  );
+  newstate >= 0 ? (
+    this.setstate(newstate);
+    setstate_for_rec(get_linked_rec(this.idx), newstate);
+    g_slider_chan_selected = this.idx;
+  );
+);
+
+function update_latched_state(m1,m2,m3) instance(rec)
+  local(latched_state)
+(
+  latched_state = this.get_state_from_msg(m1,m2,m3);
+  latched_state >= 0 ? (
+    rec[st_latched_state] = latched_state;
+  );
 );
 
 function redraw_channels() local(p)
@@ -745,7 +765,7 @@ function chan_onmsg(m1,m2,m3)
   <? loop(x=0;nch, printf("ch%d.onmsg(m1,m2,m3);\n",x+=1)) ?>
 );
 
-function latchq_add(m1,m2,m3) local(v)
+function latchq_add(m1,m2,m3) local(v, x)
 (
   g_latchq_used < g_latchq_len ?
   (
@@ -755,6 +775,8 @@ function latchq_add(m1,m2,m3) local(v)
     g_latchq[v+2]=m3;
     g_latchq_used+=1;
   );
+  // Update rec latched states
+  <? loop(x=0;nch, printf("ch%d.update_latched_state(m1,m2,m3);", x);x+=1) ?>
 );
 
 function latchq_process() local(r)
@@ -869,7 +891,7 @@ function format_note(str, note) //1=CC,2=PC
   );
 );
 
-function draw_button(xpos,ypos, w, h, bordersz)
+function draw_button(xpos,ypos, w, h, bordersz, extrabordersz, extraborder_r, extraborder_g, extraborder_b)
 (
   gfx_rect(xpos,ypos,w,h);
   bordersz > 0 ? (
@@ -878,6 +900,15 @@ function draw_button(xpos,ypos, w, h, bordersz)
     gfx_rect(xpos+bordersz,ypos,w-bordersz*2,bordersz);
     gfx_rect(xpos+w-bordersz,ypos,bordersz,h);
     gfx_rect(xpos+bordersz,ypos+h-bordersz,w-bordersz*2,bordersz);
+  );
+  extrabordersz > 0 ? (
+    gfx_set(extraborder_r, extraborder_g, extraborder_b);
+    xpos += bordersz; ypos += bordersz;
+    w -= bordersz * 2; h -= bordersz * 2;
+    gfx_rect(xpos,ypos,extrabordersz,h);
+    gfx_rect(xpos+extrabordersz,ypos,w-extrabordersz*2,extrabordersz);
+    gfx_rect(xpos+w-extrabordersz,ypos,extrabordersz,h);
+    gfx_rect(xpos+extrabordersz,ypos+h-extrabordersz,w-extrabordersz*2,extrabordersz);
   );
 );
 
@@ -1162,9 +1193,10 @@ function load_file(filename, channel) local(fh nch sr len rec rec2 buf buf2 v i)
   );
 );
 
-function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
+function draw(ixpos, ypos) local(i i2 r w h gap rec mode latched_mode force_redraw rowsize
   mx my mw t nrows lx ly wantr ty tw th rec2 wl
-  now lasthalve lastlen lastoffs col xpos dropfile)
+  now lasthalve lastlen lastoffs col xpos dropfile
+  extraborder_r extraborder_g extraborder_b)
 (
   force_redraw = gfx_w != last_w || gfx_h != last_h ||
     lasthalve != cfgp_fade[] || lastlen != g_length ||
@@ -1211,6 +1243,7 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
       );
     );
 
+    // TODO: Show latched mode
     mode = rec[st_state];
     mode ? (
       gfx_set(mode==2 ? 1 : 0.25,mode==1?1:0.25, 0.25);
@@ -1221,11 +1254,17 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
     rec[st_dirty] ? mode|=16;
     mode |= rec[st_monmode] << 8;
     g_firstrec ? mode |= 1<<30;
+    rec[st_latched_state] >= 0 && rec[st_state] != rec[st_latched_state] ? (
+      mode |= 32;
+      extraborder_r = rec[st_latched_state] == 2 ? 1 : 0;
+      extraborder_g = rec[st_latched_state] == 1 ? 1 : 0;
+      extraborder_b = rec[st_latched_state] == 0 ? 1 : 0;
+    );
 
     force_redraw || rec[st_lastd] != mode || ((mode&2) && now>rec[st_lastpkupd]+0.5) ? (
       rec[st_lastd] = mode;
       rec[st_lastpkupd]=now;
-      draw_button(xpos,ypos,w,h, mode&8 ? 2 : 0);
+      draw_button(xpos,ypos,w,h, mode&8 ? 2 : 0, mode&32 ? 4 : 0, extraborder_r, extraborder_g, extraborder_b);
 
       gfx_set(1,1,1);
       gfx_x = xpos + 8;
@@ -1344,7 +1383,7 @@ function draw(ixpos, ypos) local(i i2 w h gap rec mode force_redraw rowsize
       i == 19 ? gfx_set(0.9, 0.5, 0.0) :
                 gfx_set(0.5, 0.0, 0.0);
 
-      draw_button(xpos,ypos,w,h,0);
+      draw_button(xpos,ypos,w,h,0,0,0,0,0);
       gfx_set(1);
       gfx_measurestr(mem_gen_names[i],tw,th);
       gfx_x=xpos+(w-tw)*.5;
