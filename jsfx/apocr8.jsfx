@@ -493,7 +493,7 @@ function updatechfromrec()
 
 function reset() local(lp)
 (
-  g_slider_chan_selected=-1;
+  g_slider_chan_selected=0;
   // setstate() will latch dirty_top to st_dirty
   <? loop(x=0;nch, x+=1; printf("ch%d.setstate(0); ch%d.rev_stop(); ch%d.dirty_top=-1;\n",x,x,x)) ?>
   lp = mem_stlist;
